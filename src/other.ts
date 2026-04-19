@@ -1,5 +1,6 @@
-import { escapeRegExp, isObject } from "lodash-es";
-import dayjs from 'dayjs'
+import { escapeRegExp, isObject, round } from "lodash-es";
+import dayjs, { ConfigType } from "dayjs";
+import duration from "dayjs/plugin/duration";
 
 /**
  * 通过canvas获取字符的实际宽度
@@ -64,8 +65,8 @@ export const copyToClipboard = (text: string) => {
  * @param val 编码字符串
  * @example encodeValue('test?') => 'test%3F'
  */
-export const encodeValue = (val: string) => {
-    if (!val) return val;
+export const encodeValue = (val: any): any => {
+    if (!val || typeof val !== 'string') return val;
     return encodeURIComponent(val);
 };
 /**
@@ -73,9 +74,9 @@ export const encodeValue = (val: string) => {
  * @param val 解码字符串
  * @example decodeValue('test%3F') => 'test?'
  */
-export const decodeValue = (val: string) => {
+export const decodeValue = (val: any): any => {
     try {
-        if (!val) return val;
+        if (!val || typeof val !== 'string') return val;
         return decodeURIComponent(val);
     } catch (e) {
         return val;
@@ -86,14 +87,14 @@ export const decodeValue = (val: string) => {
  * @param obj
  * @example encodeObject({cpu: 'intel i7',gpu:'rtx 4090'}) => {cpu: 'intel%20i7',gpu:'rtx%204090'}
  */
-export const encodeObject = (obj: {}) => {
+export const encodeObject = (obj: Record<string, any>) => {
     if (!isObject(obj)) {
         return obj;
     }
     return Object.keys(obj).reduce((acc, key) => {
-        acc[key] = encodeValue(obj[key]);
+        acc[key] = encodeValue((obj as any)[key]);
         return acc;
-    }, {});
+    }, {} as Record<string, any>);
 };
 
 /**
@@ -101,28 +102,29 @@ export const encodeObject = (obj: {}) => {
  * @param obj
  * @example decodeObject({cpu: 'intel%20i7',gpu:'rtx%204090'}) => {cpu: 'intel i7',gpu:'rtx 4090'}
  */
-export const decodeObject = (obj: {}) => {
+export const decodeObject = (obj: Record<string, any>) => {
     if (!isObject(obj)) {
         return obj;
     }
     return Object.keys(obj).reduce((acc, key) => {
-        acc[key] = decodeValue(obj[key]);
+        acc[key] = decodeValue((obj as any)[key]);
         return acc;
-    }, {});
+    }, {} as Record<string, any>);
 };
 /**
  * 转义对象中含有正则中的特殊字符
  * @param obj
  * @example escapeRegExpObject({a:'[lodash]'}) => {a:'\[lodash\]'}
  */
-export const escapeRegExpObject = (obj: {}) => {
+export const escapeRegExpObject = (obj: Record<string, any>) => {
     if (!isObject(obj)) {
         return obj;
     }
     return Object.keys(obj).reduce((acc, key) => {
-        acc[key] = escapeRegExp(obj[key]);
+        const value = (obj as any)[key];
+        acc[key] = typeof value === 'string' ? escapeRegExp(value) : value;
         return acc;
-    }, {});
+    }, {} as Record<string, any>);
 };
 /**
  * 检查日期格式，没有时分秒补充 23:59:59
@@ -144,6 +146,87 @@ export const checkAndCompleteDate = (dateString: string) => {
         return dateString
     }
 };
+
+export type ShowDurationOptions = {
+    /** 开始时间 */
+    startTime: ConfigType;
+    /** 结束时间 */
+    endTime: ConfigType;
+    /** 语言，默认为中文 */
+    lang?: "zh" | "en";
+};
+
+// 语言包
+const langMap = {
+    zh: {
+        d: "天",
+        h: "小时",
+        m: "分",
+        s: "秒",
+        ms: "毫秒",
+    },
+
+    en: {
+        d: "d",
+        h: "h",
+        m: "m",
+        s: "s",
+        ms: "ms",
+    },
+};
+
+/** 计算时间范围 */
+export const showDuration = (options: ShowDurationOptions) => {
+    const { startTime, endTime, lang } = options || {};
+
+    const langs = langMap[lang || "en"];
+
+    const secondsDuration = dayjs(endTime).diff(startTime) * 0.001;
+
+    if (secondsDuration < 0 || !startTime || !endTime || !langs) {
+        return "";
+    }
+
+    // 一秒以内
+    if (secondsDuration < 1) {
+        return `${round(secondsDuration * 1000)}${langs.ms}`;
+    }
+
+    // 一分钟内
+    if (secondsDuration < 60) {
+        return `${round(secondsDuration, 2)}${langs.s}`;
+    }
+
+    // 超出一分钟
+    const du = dayjs.duration(secondsDuration, "seconds");
+
+    const timeArr = [
+        {
+            val: du.days(),
+            label: langs.d,
+        },
+        {
+            val: du.hours(),
+            label: langs.h,
+        },
+        {
+            val: du.minutes(),
+            label: langs.m,
+        },
+        {
+            val: du.seconds(),
+            label: langs.s,
+        },
+    ];
+
+    return (
+        timeArr
+            .filter((item) => item.val)
+            .map((item) => `${item.val}${item.label}`)
+            .join("") || `0${langs.ms}`
+    );
+};
+
 /**
  * 转换为带连字符的uuid字符串
  * @param uuidStr uuid字符串
